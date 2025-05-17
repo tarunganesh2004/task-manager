@@ -1,45 +1,50 @@
-const express = require("express");
-const mysql = require("mysql2/promise");
-const jwt = require("jsonwebtoken");
-const dotenv = require("dotenv");
-
-dotenv.config();
+const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
+const Task = require('../models/Task');
 
-const authenticate = (req, res, next) => {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "No token provided" });
+router.post('/', auth, async (req, res) => {
+    const { title, description, priority, deadline, reminder } = req.body;
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch (error) {
-        res.status(401).json({ error: "Invalid token" });
+        const taskId = await Task.create(
+            req.user.id,
+            title,
+            description,
+            priority,
+            deadline,
+            reminder
+        );
+        res.json({ id: taskId, msg: 'Task created' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
     }
-};
+});
 
-router.get("/", authenticate, async (req, res) => {
-    let db;
+router.get('/', auth, async (req, res) => {
     try {
-        db = await mysql.createConnection({
-            host: process.env.DB_HOST,
-            user: process.env.DB_USER,
-            password: process.env.DB_PASSWORD,
-            database: process.env.DB_NAME
-        });
-        const [tasks] = await db.execute("SELECT * FROM tasks WHERE user = ?", [
-            req.user.username
-        ]);
-        const normalizedTasks = tasks.map(task => ({
-            ...task,
-            completed: Boolean(task.completed)
-        }));
-        res.json(normalizedTasks);
-    } catch (error) {
-        console.error("Error fetching tasks:", error);
-        res.status(500).json({ error: "Failed to fetch tasks" });
-    } finally {
-        if (db) await db.end();
+        const tasks = await Task.findByUser(req.user.id);
+        res.json(tasks);
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+router.put('/:id', auth, async (req, res) => {
+    const { title, description, priority, deadline, reminder } = req.body;
+    try {
+        await Task.update(req.params.id, title, description, priority, deadline, reminder);
+        res.json({ msg: 'Task updated' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+router.delete('/:id', auth, async (req, res) => {
+    try {
+        await Task.delete(req.params.id);
+        res.json({ msg: 'Task deleted' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
     }
 });
 
