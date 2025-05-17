@@ -9,8 +9,9 @@ const router = express.Router();
 
 router.post("/register", async (req, res) => {
     const { username, password } = req.body;
+    let db;
     try {
-        const db = await mysql.createConnection({
+        db = await mysql.createConnection({
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
             password: process.env.DB_PASSWORD,
@@ -21,17 +22,24 @@ router.post("/register", async (req, res) => {
             username,
             hashedPassword
         ]);
-        await db.end();
         res.status(201).json({ message: "User registered" });
     } catch (error) {
-        res.status(500).json({ error: "Registration failed" });
+        console.error("Registration error:", error);
+        if (error.code === "ER_DUP_ENTRY") {
+            res.status(400).json({ error: "Username already exists" });
+        } else {
+            res.status(500).json({ error: "Registration failed" });
+        }
+    } finally {
+        if (db) await db.end();
     }
 });
 
 router.post("/login", async (req, res) => {
     const { username, password } = req.body;
+    let db;
     try {
-        const db = await mysql.createConnection({
+        db = await mysql.createConnection({
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
             password: process.env.DB_PASSWORD,
@@ -41,22 +49,22 @@ router.post("/login", async (req, res) => {
             username
         ]);
         if (users.length === 0) {
-            await db.end();
             return res.status(401).json({ error: "Invalid credentials" });
         }
         const user = users[0];
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
-            await db.end();
             return res.status(401).json({ error: "Invalid credentials" });
         }
         const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET, {
             expiresIn: "1h"
         });
-        await db.end();
         res.json({ token });
     } catch (error) {
+        console.error("Login error:", error);
         res.status(500).json({ error: "Login failed" });
+    } finally {
+        if (db) await db.end();
     }
 });
 

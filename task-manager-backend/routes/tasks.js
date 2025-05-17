@@ -19,8 +19,9 @@ const authenticate = (req, res, next) => {
 };
 
 router.get("/", authenticate, async (req, res) => {
+    let db;
     try {
-        const db = await mysql.createConnection({
+        db = await mysql.createConnection({
             host: process.env.DB_HOST,
             user: process.env.DB_USER,
             password: process.env.DB_PASSWORD,
@@ -29,10 +30,16 @@ router.get("/", authenticate, async (req, res) => {
         const [tasks] = await db.execute("SELECT * FROM tasks WHERE user = ?", [
             req.user.username
         ]);
-        await db.end();
-        res.json(tasks);
+        const normalizedTasks = tasks.map(task => ({
+            ...task,
+            completed: Boolean(task.completed)
+        }));
+        res.json(normalizedTasks);
     } catch (error) {
+        console.error("Error fetching tasks:", error);
         res.status(500).json({ error: "Failed to fetch tasks" });
+    } finally {
+        if (db) await db.end();
     }
 });
 
